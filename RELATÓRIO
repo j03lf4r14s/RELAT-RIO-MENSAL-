@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Painel de Métricas - Dark (Completo)</title>
+
+<!-- libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- Tailwind CDN for quick styling -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+  body { background: #072033; color: #e6f3fb; }
+  .card { background: linear-gradient(180deg,#0f3247 0%, #0b2b3f 100%); border: 1px solid rgba(255,255,255,0.03); box-shadow: 0 6px 18px rgba(2,10,20,0.6); }
+  .card-title { color: #7ee7ff; font-weight:700; letter-spacing:0.4px; }
+  .small-muted { color: #9ccbdc; font-size: 13px; }
+  .progress-track { background: rgba(255,255,255,0.06); height:8px; border-radius:999px; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:999px; }
+  #bigChart { height: 420px !important; }
+  .cards-row { max-height: 420px; overflow-y:auto; padding-right:6px; }
+  .rank-card { background: linear-gradient(180deg,#0b2b3f 0%, #082532 100%); border-radius:12px; padding:18px; color:#dff6ff; }
+  .dot { width:10px; height:10px; border-radius:999px; display:inline-block; margin-right:8px; vertical-align:middle; }
+  .chart-light {
+    background: #f7fafc;
+    padding:16px;
+    border-radius:10px;
+  }
+  .chart-light h2 { color:#0b3b2f; }
+  /* new repeated clients block tweaks */
+  .cliente-repetido { background: linear-gradient(180deg,#072f3f 0%, #041f2a 100%); padding:10px; border-radius:8px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.03); }
+  .cliente-nome { color:#cfeffb; font-weight:700; font-size:13px; }
+  .registro-line { color:#dbeffd; font-size:12px; margin-left:8px; }
+  .tec-header { color:#7ee7ff; font-weight:700; margin-bottom:6px; }
+  .small-count { color:#aee8ff; font-size:12px; margin-left:6px; font-weight:600; }
+  .scrollable-repeats { max-height:340px; overflow:auto; padding-right:8px; }
+</style>
+</head>
+<body>
+
+<div class="max-w-[1200px] mx-auto p-6">
+  <header class="text-center mb-6">
+    <h1 class="text-2xl md:text-3xl font-extrabold text-[#aee8ff]">📈 PAINEL DE MÉTRICAS DE DESEMPENHO</h1>
+    <p class="text-sm text-[#9fcfe6] mt-1">FAÇA UPLOAD DO ARQUIVO EXCEL (ABERTURA | CLIENTE | ASSUNTO | COLABORADOR | FECHAMENTO)</p>
+  </header>
+
+  <div class="flex justify-center mb-6">
+    <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="px-4 py-2 rounded bg-[#0b4f6c] text-white cursor-pointer" />
+  </div>
+
+  <!-- top summaries -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 hidden" id="topSummaries">
+    <div class="card p-5 rounded-lg">
+      <h2 class="card-title text-lg mb-3">📊 RESUMO POR ASSUNTO</h2>
+      <div id="resumoAssuntos" class="text-sm small-muted leading-6 uppercase"></div>
+    </div>
+
+    <div class="card p-5 rounded-lg">
+      <h2 class="card-title text-lg mb-3">📋 RESUMO GERAL</h2>
+      <div id="resumoGeral" class="text-sm small-muted leading-6 uppercase"></div>
+    </div>
+  </div>
+
+  <!-- cards per technician -->
+  <section class="mt-4">
+    <div class="cards-row grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="cardsContainer">
+      <!-- cards injected here -->
+    </div>
+  </section>
+
+  <!-- charts: big bar + donut -->
+  <section class="mt-6 card p-4 rounded-lg">
+    <h2 class="card-title text-center mb-3">VISÃO GERAL DO DESEMPENHO DOS TÉCNICOS</h2>
+    <canvas id="bigChart"></canvas>
+  </section>
+
+  <section class="mt-6 card p-4 rounded-lg">
+    <h2 class="card-title text-center mb-3">DISTRIBUIÇÃO DE REPAROS REPETIDOS (DOUGHNUT)</h2>
+    <canvas id="donutChart" style="max-height:360px"></canvas>
+  </section>
+
+  <!-- daily chart (new) -->
+  <section class="mt-6 chart-light">
+    <h2 class="text-center mb-3">📆 CHAMADOS TOTAIS POR DIA (ABERTURA)</h2>
+    <canvas id="graficoPorDia" style="max-height:360px"></canvas>
+  </section>
+
+  <!-- ranking -->
+  <section class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="rank-card">
+      <h3 class="text-lg font-bold mb-3">🏆 TOP TÉCNICOS (MENOR REINCIDÊNCIA)</h3>
+      <div id="topRanks"></div>
+    </div>
+
+    <div class="rank-card">
+      <h3 class="text-lg font-bold mb-3">⚠️ TÉCNICOS EM ATENÇÃO (MAIOR REINCIDÊNCIA)</h3>
+      <div id="badRanks"></div>
+    </div>
+  </section>
+
+  <!-- NOVO BLOCO: CLIENTES REPETIDOS POR TÉCNICO -->
+  <div id="clientesRepetidosContainer" class="mt-6 hidden">
+    <div class="rank-card">
+      <h3 class="text-lg font-bold mb-3">📋 CLIENTES REPETIDOS POR TÉCNICO</h3>
+      <div id="clientesRepetidos" class="scrollable-repeats"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---- Configuration ---- */
+const ASSUNTOS_PADRAO = [
+  "SEM CONEXÃO",
+  "INSTALAÇÃO INTERNET BANDA LARGA ILIMITADA",
+  "REPARO DE OSCILAÇÃO",
+  "MUDANÇA DE ENDEREÇO",
+  "CLIENTE ATENUADO",
+  "RETIRADA DE EQUIPAMENTO",
+  "REATIVAÇÃO DOS SERVIÇOS",
+  "REPETIDOR DE SINAL",
+  "MUDANÇA DE PONTO INTERNO",
+  "CONFIGURAÇÃO VOIP",
+  "SUPORTE DE APP REMOTO",
+  "VISITA DA SUPERVISÃO",
+  "INSTALAÇÃO DE VOIP",
+  "CABO DE REDE",
+  "MONTAGEM DA CAIXA DE ATENDIMENTO",
+  "EXPEDIÇÃO DE CARNÊ",
+  "ATIVAÇÃO DE APPS",
+  "INSTALAÇÃO EQUIPAMENTO FIRESTICK",
+  "INSTALAÇÃO DE INTERNET"
+];
+
+const fileInput = document.getElementById('fileInput');
+fileInput.addEventListener('change', handleFile);
+
+let chartInstance = null;
+let donutInstance = null;
+let dailyInstance = null;
+let lastRows = []; // store rows for daily chart
+
+function handleFile(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const data = new Uint8Array(e.target.result);
+    const wb = XLSX.read(data, { type: 'array' });
+    const sheetName = wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
+    lastRows = rows;
+    processData(rows);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ---------- Date helpers ---------- */
+
+/**
+ * Convert Excel serial (number) to JS Date.
+ * Excel epoch used: 1899-12-30 (so serial 1 => 1900-01-01). This formula handles typical XLSX serials.
+ */
+function excelSerialToDate(serial) {
+  // serial might be float (with time fraction)
+  const days = Math.floor(serial);
+  const fraction = serial - days;
+  // milliseconds from Excel epoch
+  const ms = Math.round((serial - 25569) * 86400 * 1000);
+  const d = new Date(ms);
+  if (isNaN(d)) return null;
+  // adjust time fraction more precisely if needed
+  if (fraction > 0) {
+    const extraMs = Math.round(fraction * 86400 * 1000);
+    d.setTime(d.getTime() + extraMs - Math.round((fraction * 86400 * 1000)));
+  }
+  return d;
+}
+
+/**
+ * Try to parse a cell value (could be number, excel serial string, or date string).
+ * Returns a Date object or null.
+ */
+function parseDateFlexible(value) {
+  if (value === null || value === undefined || value === '') return null;
+
+  // if already a Date
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    if (!isNaN(value)) return value;
+  }
+
+  // numeric (Excel read as number)
+  if (typeof value === 'number') {
+    return excelSerialToDate(value);
+  }
+
+  // string that looks like a number (e.g. "45945.52054")
+  const maybeNum = value.toString().trim();
+  if (/^\d+(\.\d+)?$/.test(maybeNum)) {
+    const f = parseFloat(maybeNum);
+    if (!isNaN(f)) return excelSerialToDate(f);
+  }
+
+  // string formats: dd/mm/yyyy or dd/mm/yyyy hh:mm or ISO
+  // try dd/mm/yyyy
+  const dmy = maybeNum.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(.*)$/);
+  if (dmy) {
+    const day = parseInt(dmy[1],10);
+    const month = parseInt(dmy[2],10) - 1;
+    let year = parseInt(dmy[3],10);
+    if (year < 100) year += 2000;
+    const rest = dmy[4].trim();
+    if (rest) {
+      // has time part possibly
+      const dt = new Date(year, month, day);
+      const t = new Date(`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')} ${rest}`);
+      if (!isNaN(t)) return t;
+    }
+    return new Date(year, month, day);
+  }
+
+  // try ISO / Date constructor
+  const iso = new Date(maybeNum);
+  if (!isNaN(iso)) return iso;
+
+  return null;
+}
+
+/**
+ * Format value into dd/mm/yyyy or dd/mm/yyyy hh:mm
+ */
+function formatDateForDisplay(raw) {
+  const dt = parseDateFlexible(raw);
+  if (!dt) return String(raw || '').trim(); // fallback to original text
+  const dd = String(dt.getDate()).padStart(2,'0');
+  const mm = String(dt.getMonth()+1).padStart(2,'0');
+  const yyyy = dt.getFullYear();
+  const hh = String(dt.getHours()).padStart(2,'0');
+  const min = String(dt.getMinutes()).padStart(2,'0');
+  // if time portion is 00:00, just show date
+  if (dt.getHours() === 0 && dt.getMinutes() === 0 && dt.getSeconds() === 0) {
+    return `${dd}/${mm}/${yyyy}`;
+  } else {
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+  }
+}
+
+/* Robust date parse used for grouping by day (returns JS Date) */
+function parseDate(value) {
+  return parseDateFlexible(value);
+}
+
+/* ---------- Data processing ---------- */
+function processData(rows) {
+  const assuntosCount = {};
+  ASSUNTOS_PADRAO.forEach(a => assuntosCount[a] = 0);
+  const tecnicos = {}; // name -> { total, clientesMap }
+  const clientesGlobais = {}; // cliente -> count
+
+  rows.forEach(r => {
+    const cliente = (r['Cliente'] || r['cliente'] || '').toString().trim().toUpperCase();
+    const colaborador = (r['Colaborador'] || r['colaborador'] || r['Técnico'] || r['TECNICO'] || '').toString().trim().toUpperCase();
+    const assuntoRaw = (r['Assunto'] || r['assunto'] || '').toString().trim().toUpperCase();
+
+    if (!cliente && !colaborador && !assuntoRaw) return;
+
+    if (cliente) clientesGlobais[cliente] = (clientesGlobais[cliente] || 0) + 1;
+
+    if (colaborador) {
+      if (!tecnicos[colaborador]) tecnicos[colaborador] = { total: 0, clientes: {} };
+      tecnicos[colaborador].total++;
+      if (cliente) tecnicos[colaborador].clientes[cliente] = (tecnicos[colaborador].clientes[cliente] || 0) + 1;
+    }
+
+    for (const key of ASSUNTOS_PADRAO) {
+      if (!assuntoRaw) continue;
+      if (assuntoRaw.includes(key) || key.includes(assuntoRaw) || (assuntoRaw && key.startsWith(assuntoRaw.slice(0,8)))) {
+        assuntosCount[key] = (assuntosCount[key] || 0) + 1;
+        break;
+      }
+    }
+  });
+
+  const totalChamados = rows.length;
+  const totalClientesUnicos = Object.keys(clientesGlobais).length;
+  const totalClientesRepetidos = Object.values(clientesGlobais).filter(c => c > 1).length;
+  const totalGeralClientes = totalClientesUnicos + totalClientesRepetidos;
+  const totalSemConexao = assuntosCount["SEM CONEXÃO"] || 0;
+
+  const cardsData = [];
+  for (const [nome, d] of Object.entries(tecnicos)) {
+    const repetidosTec = Object.values(d.clientes).filter(x => x > 1).length;
+    const perc = (d.total > 0) ? (repetidosTec / d.total * 100) : 0;
+    cardsData.push({
+      nome,
+      total: d.total,
+      repetidos: repetidosTec,
+      perc: Number(perc.toFixed(2))
+    });
+  }
+
+  cardsData.sort((a,b) => b.total - a.total);
+
+  renderTopSummaries(assuntosCount, {
+    TOTAL_CHAMADOS: totalChamados,
+    TOTAL_CLIENTES_UNICOS: totalClientesUnicos,
+    TOTAL_CLIENTES_REPETIDOS: totalClientesRepetidos,
+    TOTAL_GERAL_CLIENTES: totalGeralClientes,
+    TOTAL_SEM_CONEXAO: totalSemConexao
+  });
+
+  renderCards(cardsData);
+  renderChart(cardsData);
+  renderDonut(cardsData);
+  renderRanking(cardsData);
+  renderClientesRepetidos(rows, cardsData); // show repeats with formatted dates
+  renderDailyChart(rows);
+}
+
+/* ---------- Render functions ---------- */
+
+function renderTopSummaries(assuntosCount, geral) {
+  document.getElementById('topSummaries').classList.remove('hidden');
+
+  const resumoAssuntosDiv = document.getElementById('resumoAssuntos');
+  const assuntoLines = ASSUNTOS_PADRAO.map(a => `• ${a}: ${assuntosCount[a] || 0}`);
+  resumoAssuntosDiv.innerHTML = assuntoLines.join('<br>');
+
+  const resumoGeralDiv = document.getElementById('resumoGeral');
+  resumoGeralDiv.innerHTML = `
+    • TOTAL DE CHAMADOS: ${geral.TOTAL_CHAMADOS}<br>
+    • TOTAL DE CLIENTES ÚNICOS: ${geral.TOTAL_CLIENTES_UNICOS}<br>
+    • TOTAL DE CLIENTES REPETIDOS: ${geral.TOTAL_CLIENTES_REPETIDOS}<br>
+    • TOTAL GERAL DE CLIENTES: ${geral.TOTAL_GERAL_CLIENTES}<br>
+    • TOTAL DE CHAMADOS DE SEM CONEXÃO: ${geral.TOTAL_SEM_CONEXAO}
+  `;
+}
+
+function renderCards(cardsData) {
+  const container = document.getElementById('cardsContainer');
+  container.innerHTML = '';
+
+  cardsData.forEach(item => {
+    const color = item.perc >= 20 ? '#ff6b6b' : (item.perc >= 8 ? '#f7b267' : '#2bd18a');
+    const card = document.createElement('div');
+    card.className = 'card p-4 rounded-lg';
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div class="w-3/4">
+          <div class="card-title text-sm">${escapeHtml(item.nome)}</div>
+          <div class="small-muted mt-2 text-xs">TOTAL DE CHAMADOS: <span class="text-white font-semibold">${item.total}</span></div>
+          <div class="small-muted text-xs">REPAROS REPETIDOS: <span class="text-white font-semibold">${item.repetidos}</span></div>
+          <div class="small-muted text-xs mt-2">PERCENTUAL: <span class="text-white font-semibold">${item.perc}%</span></div>
+        </div>
+        <div class="w-1/4 text-right">
+          <div style="font-size:28px; color:#9ee8ff; font-weight:700">${item.total}</div>
+        </div>
+      </div>
+      <div class="mt-3 progress-track">
+        <div class="progress-fill" style="width:${Math.min(item.perc,100)}%; background:${color}"></div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+/* big chart: totals vs repetidos by technician */
+function renderChart(cardsData) {
+  const labels = cardsData.map(c => c.nome);
+  const totals = cardsData.map(c => c.total);
+  const repeats = cardsData.map(c => c.repetidos);
+
+  const ctx = document.getElementById('bigChart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'TOTAL DE CHAMADOS',
+          data: totals,
+          backgroundColor: 'rgba(32,190,255,0.9)',
+          borderRadius: 4,
+          barThickness: 18
+        },
+        {
+          label: 'REPAROS REPETIDOS',
+          data: repeats,
+          backgroundColor: 'rgba(255,99,132,0.95)',
+          borderRadius: 4,
+          barThickness: 8
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#cfeffb' } },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#bfeeff', maxRotation: 45, minRotation: 45 },
+          grid: { display: false, color: 'rgba(255,255,255,0.03)' }
+        },
+        y: {
+          ticks: { color: '#bfeeff' },
+          grid: { color: 'rgba(255,255,255,0.03)' },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  document.getElementById('bigChart').style.height = '420px';
+}
+
+/* donut chart: repeat distribution */
+function renderDonut(cardsData) {
+  const labels = cardsData.map(c => c.nome);
+  const data = cardsData.map(c => c.repetidos);
+
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  if (donutInstance) donutInstance.destroy();
+
+  const palette = [
+    '#ff6b6b','#f7b267','#2bd18a','#5ad3ff','#a78bfa','#ff7ab6','#7ee7ff','#ff9f43',
+    '#4caf50','#2196f3','#9c27b0','#ff5722','#795548','#00bcd4','#e91e63'
+  ];
+  const bg = labels.map((_,i)=> palette[i % palette.length]);
+
+  donutInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets:[{
+        data,
+        backgroundColor: bg,
+        hoverOffset: 8,
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.04)'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#cfeffb' } },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              const v = ctx.raw || 0;
+              const total = ctx.dataset.data.reduce((a,b)=>a+b,0) || 1;
+              const pct = ((v/total)*100).toFixed(2);
+              return `${ctx.label}: ${v} (${pct}%)`;
+            }
+          }
+        }
+      },
+      cutout: '55%'
+    }
+  });
+}
+
+/* ranking: top (lowest perc) and worst (highest perc) */
+function renderRanking(cardsData) {
+  const withCalls = cardsData.filter(c => c.total > 0);
+  if (withCalls.length === 0) {
+    document.getElementById('topRanks').innerHTML = '<div class="text-sm">Sem dados</div>';
+    document.getElementById('badRanks').innerHTML = '<div class="text-sm">Sem dados</div>';
+    return;
+  }
+
+  const asc = [...withCalls].sort((a,b)=> a.perc - b.perc);
+  const desc = [...withCalls].sort((a,b)=> b.perc - a.perc);
+
+  const top5 = asc.slice(0,5);
+  const bad5 = desc.slice(0,5);
+
+  const buildList = (list, positive) => {
+    return list.map((item, idx) => {
+      const color = positive ? '#2bd18a' : '#ff6b6b';
+      return `
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center">
+            <span class="dot" style="background:${color}"></span>
+            <div>
+              <div class="text-sm font-semibold">${escapeHtml(item.nome)}</div>
+              <div class="text-xs small-muted">TOTAL: ${item.total} — REPETIDOS: ${item.repetidos}</div>
+            </div>
+          </div>
+          <div class="text-sm font-bold">${item.perc}%</div>
+        </div>
+      `;
+    }).join('');
+  };
+
+  document.getElementById('topRanks').innerHTML = buildList(top5, true) || '<div>Sem dados</div>';
+  document.getElementById('badRanks').innerHTML = buildList(bad5, false) || '<div>Sem dados</div>';
+}
+
+/* ---------- NOVA FUNÇÃO: RENDER CLIENTES REPETIDOS (COM DATA FORMATADA) ---------- */
+function renderClientesRepetidos(rows, cardsData) {
+  const container = document.getElementById('clientesRepetidosContainer');
+  const divList = document.getElementById('clientesRepetidos');
+  divList.innerHTML = '';
+  container.classList.add('hidden');
+
+  const tecnicosComReincidencia = cardsData.filter(t => t.repetidos > 0);
+  if (tecnicosComReincidencia.length === 0) return;
+
+  container.classList.remove('hidden');
+
+  tecnicosComReincidencia.forEach(tec => {
+    const registrosTec = rows.filter(r => {
+      const colaborador = (r['Colaborador'] || r['colaborador'] || r['Técnico'] || r['TECNICO'] || '').toString().trim().toUpperCase();
+      return colaborador === tec.nome;
+    });
+
+    const contador = {};
+    registrosTec.forEach(r => {
+      const cliente = (r['Cliente'] || r['cliente'] || '').toString().trim().toUpperCase();
+      if (!cliente) return;
+      contador[cliente] = (contador[cliente] || 0) + 1;
+    });
+
+    const repetidos = Object.keys(contador).filter(c => contador[c] > 1);
+    if (repetidos.length === 0) return;
+
+    let tecHtml = `<div class="mb-4 cliente-repetido">`;
+    tecHtml += `<div class="tec-header">${escapeHtml(tec.nome)}<span class="small-count">— ${repetidos.length} cliente(s) repetido(s)</span></div>`;
+
+    repetidos.forEach(cliente => {
+      const chamados = registrosTec.filter(r => {
+        const c = (r['Cliente'] || r['cliente'] || '').toString().trim().toUpperCase();
+        return c === cliente;
+      });
+
+      tecHtml += `<div class="cliente-nome">• ${escapeHtml(cliente)} <span class="small-muted text-xs">(${chamados.length} ocorrências)</span></div>`;
+
+      chamados.forEach(r => {
+        const assuntoRaw = (r['Assunto'] || r['assunto'] || '').toString().trim();
+        const aberturaRaw = (r['Abertura'] || r['abertura'] || '').toString().trim();
+        const fechamentoRaw = (r['Fechamento'] || r['fechamento'] || '').toString().trim();
+
+        const assunto = assuntoRaw || 'N/A';
+        const aberturaFmt = formatDateForDisplay(aberturaRaw);
+        const fechamentoFmt = formatDateForDisplay(fechamentoRaw);
+
+        tecHtml += `<div class="registro-line">— ${escapeHtml(assunto)} | ${escapeHtml(aberturaFmt)} → ${escapeHtml(fechamentoFmt)}</div>`;
+      });
+    });
+
+    tecHtml += `</div>`;
+    divList.innerHTML += tecHtml;
+  });
+}
+
+/* ---------- DAILY CHART (NEW) ---------- */
+function renderDailyChart(rows) {
+  const counts = {};
+  rows.forEach(r => {
+    const raw = r['Abertura'] || r['abertura'] || '';
+    const dt = parseDate(raw);
+    if (!dt) return;
+    const key = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }); // e.g. "01/out"
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  const labels = Object.keys(counts);
+  const values = labels.map(l => counts[l]);
+
+  const colors = [];
+  for (let i=0;i<values.length-1;i++) colors.push('rgba(34,197,94,0.85)');
+  if (values.length>0) colors.push('rgba(255,159,64,0.95)');
+
+  const ctx = document.getElementById('graficoPorDia').getContext('2d');
+  if (dailyInstance) dailyInstance.destroy();
+
+  dailyInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Chamados Abertos',
+        data: values,
+        backgroundColor: colors,
+        borderColor: 'rgba(0,120,0,0.9)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => `Total: ${ctx.parsed.y}` }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#0b3b2f' }, grid: { display:false } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, color: '#0b3b2f' } }
+      }
+    }
+  });
+
+  // scroll to repeats block for visibility when loaded
+  const repBlock = document.getElementById('clientesRepetidosContainer');
+  if (repBlock && !repBlock.classList.contains('hidden')) {
+    repBlock.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+/* small helper to avoid XSS when injecting names */
+function escapeHtml(str) {
+  return String(str || '').replace(/[&<>"'`]/g, s => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;', '`':'&#96;'
+  })[s]);
+}
+</script>
+
+</body>
+</html>
